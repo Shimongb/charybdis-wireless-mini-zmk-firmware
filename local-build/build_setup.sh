@@ -4,7 +4,6 @@
 set -euo pipefail
 start_time=$(date +%s)
 
-
 # --- CONFIGURABLE SETTINGS ---
 ENABLE_USB_LOGGING="false"                         # Set to "true" to enable USB logging
 REPO_ROOT="${REPO_ROOT:-$PWD}"                     # path to original repo root
@@ -13,19 +12,19 @@ CONFIG_PATH="${CONFIG_PATH:-config}"               # where source keymaps/config
 FALLBACK_BINARY="${FALLBACK_BINARY:-bin}"          # fallback firmware extension
 SCRIPT_PATH="$REPO_ROOT/scripts/convert_keymap.py" # path to script that converts keymaps
 
-
 # --- ZMK WORKSPACE ---
 echo "🛠️  Setting up ZMK workspace with west..."
 
 # Only init if not already initialized (i.e., .west folder doesn't exist)
 if [ ! -d ".west" ]; then
-    echo "Initializing west workspace..."
-    west init -l config
+  echo "Initializing west workspace..."
+  west init -l config
 fi
 
 # Mark ZMK source as a safe Git directory
-git config --global --add safe.directory /workspaces/zmk/zephyr
-git config --global --add safe.directory /workspaces/zmk/zmk
+git config --global --add safe.directory '*'
+# git config --global --add safe.directory /workspaces/zmk/zephyr
+# git config --global --add safe.directory /workspaces/zmk/zmk
 
 # Always update to fetch all modules and dependencies
 echo "🛠️  Updating west modules..."
@@ -42,7 +41,6 @@ chmod -R 777 .west zmk zephyr modules zmk-pmw3610-driver
 # # Optional: confirm checkout
 # echo "🛠️  West workspace ready. Project structure:"
 # west list
-
 
 # --- CONFIGURABLE KEYMAPS ---
 # Prepare temporary keymap directory
@@ -83,7 +81,6 @@ else
   echo "⚠️ No keymaps found in $KEYMAP_TEMP"
 fi
 
-
 # --- SANDBOX SETUP FUNCTION ---
 setup_sandbox() {
   local shield="$1"
@@ -95,24 +92,23 @@ setup_sandbox() {
   printf "⚙️  %s\n" "→ Copying files into sandbox.."
   cp -r "$REPO_ROOT/." "$BUILD_REPO/"
   cd "$BUILD_REPO"
-  
+
   # Move the keymap files (macros, combos, etc) to the partent config directory
   mv "$BUILD_REPO/config/keymap/"* "$BUILD_REPO/config/"
 
   # Determine module mode, set BASE_DIR, copy user config
   if [ -f zmk/module.yml ]; then
-      if [ "$shield" != "settings_reset" ]; then
-        BASE_DIR="${TMPDIR:-/tmp}/zmk-config"
-        mkdir -p "$BASE_DIR/$CONFIG_PATH"
-        cp -R "$REPO_ROOT/$CONFIG_PATH/"* "$BASE_DIR/$CONFIG_PATH/"
-      else
-        BASE_DIR="$BUILD_REPO"  # use sandbox root for clean build
-      fi
+    if [ "$shield" != "settings_reset" ]; then
+      BASE_DIR="${TMPDIR:-/tmp}/zmk-config"
+      mkdir -p "$BASE_DIR/$CONFIG_PATH"
+      cp -R "$REPO_ROOT/$CONFIG_PATH/"* "$BASE_DIR/$CONFIG_PATH/"
     else
-      BASE_DIR="$BUILD_REPO"
+      BASE_DIR="$BUILD_REPO" # use sandbox root for clean build
+    fi
+  else
+    BASE_DIR="$BUILD_REPO"
   fi
 }
-
 
 # --- BUILD LOOP FOR EACH SHIELD x KEYMAP ---
 echo "🚦 Starting build loop for each shield x keymap"
@@ -164,7 +160,7 @@ for shield in "${shields[@]}"; do
 
   for target in "${shield_targets[@]}"; do
     for keymap in "${keymaps[@]}"; do
-      board="nice_nano_v2"
+      board="nice_nano"
       artifact_name="${target}-${keymap}-${board}-zmk"
       BUILD_DIR=$(mktemp -d)
       printf "🗂  %s\n" "→ Build dir: $BUILD_DIR"
@@ -184,7 +180,7 @@ for shield in "${shields[@]}"; do
 
       # Load in the keymap
       cp "$KEYMAP_TEMP/${keymap}.keymap" \
-         "$BASE_DIR/$CONFIG_PATH/charybdis.keymap"
+        "$BASE_DIR/$CONFIG_PATH/charybdis.keymap"
 
       west build --pristine -s app \
         -d "$BUILD_DIR" \
@@ -192,10 +188,10 @@ for shield in "${shields[@]}"; do
         $STUDIO_SNIPPET \
         $USB_LOGGING_SNIPPET \
         -- \
-          -DZMK_CONFIG="$BASE_DIR/$CONFIG_PATH" \
-          -DSHIELD="$target" $ZMK_LOAD_ARG
+        -DZMK_CONFIG="$BASE_DIR/$CONFIG_PATH" \
+        -DSHIELD="$target" $ZMK_LOAD_ARG
       echo ""
-      
+
       # Find the built firmware (prefer .uf2, else fallback)
       ARTIFACT_SRC=""
       if [ -f "$BUILD_DIR/zephyr/zmk.uf2" ]; then
@@ -237,11 +233,10 @@ for shield in "${shields[@]}"; do
   rm -rf $BUILD_REPO
 done
 
-
 # --- BUILD RESET FIRMWARE ---
 setup_sandbox "settings_reset"
 cd "$BUILD_REPO/zmk"
-RESET_BOARD="nice_nano_v2"
+RESET_BOARD="nice_nano"
 BUILD_DIR=$(mktemp -d)
 FIRM_PATH="/workspaces/zmk/firmwares/settings_reset.uf2"
 printf "🗂  %s\n" "→ Build dir: $BUILD_DIR"
@@ -251,18 +246,24 @@ west build --pristine -s app \
   -d "$BUILD_DIR" \
   -b "$RESET_BOARD" \
   -- \
-    -DSHIELD=settings_reset \
-    -DCONFIG_NRF_STORE_REBOOT_TYPE_GPREGRET=n \
-    > build.log 2>&1 # ignore all the keymap warnings
+  -DSHIELD=settings_reset \
+  >build.log 2>&1 # ignore all the keymap warnings
+
+# west build --pristine -s app \
+#   -d "$BUILD_DIR" \
+#   -b "$RESET_BOARD" \
+#   -- \
+#   -DSHIELD=settings_reset \
+#   -DCONFIG_NRF_STORE_REBOOT_TYPE_GPREGRET=n \
+#   >build.log 2>&1 # ignore all the keymap warnings
 
 cp "$BUILD_DIR/zephyr/zmk.uf2" "$FIRM_PATH"
 chmod 666 "$FIRM_PATH"
 
-
 # --- CALCULATE EXECUTION TIME ---
 end_time=$(date +%s)
-elapsed=$(( end_time - start_time ))
-minutes=$(( elapsed / 60 ))
-seconds=$(( elapsed % 60 ))
+elapsed=$((end_time - start_time))
+minutes=$((elapsed / 60))
+seconds=$((elapsed % 60))
 echo "🏁 All builds completed in ${minutes} m ${seconds} s."
 echo ""
