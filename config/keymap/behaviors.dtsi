@@ -171,6 +171,14 @@
             bindings = <&mo>, <&kp>;
         };
 
+        td_sym_del: td_sym_del {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <170>;
+            bindings = <&mo_kp 3 DELETE>, <&kp DELETE>; // hold, tap, double_tap
+        };
+
+
         td_bs: td_bs {
             compatible = "zmk,behavior-tap-dance";
             #binding-cells = <0>;
